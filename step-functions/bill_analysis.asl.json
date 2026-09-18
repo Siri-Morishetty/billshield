@@ -1,0 +1,94 @@
+{
+  "Comment": "BillShield Analysis Pipeline. Orchestrates the processing of a newly uploaded bill.",
+  "StartAt": "ExtractDocument",
+  "States": {
+    "ExtractDocument": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${TextractHandlerFunctionArn}",
+        "Payload": {
+          "bucket.$": "$.detail.bucket.name",
+          "key.$": "$.detail.object.key"
+        }
+      },
+      "ResultPath": "$.ExtractionResult",
+      "Next": "ParseBillData"
+    },
+    "ParseBillData": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ParserHandlerFunctionArn}",
+        "Payload": {
+          "raw_textract_data.$": "$.ExtractionResult.Payload"
+        }
+      },
+      "ResultPath": "$.ParsedBill",
+      "Next": "ValidateAndCompare"
+    },
+    "ValidateAndCompare": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "ValidateCalculations",
+          "States": {
+            "ValidateCalculations": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${ValidationHandlerFunctionArn}",
+                "Payload": {
+                  "bill.$": "$.ParsedBill.Payload"
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CompareHistory",
+          "States": {
+            "CompareHistory": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${HistoryHandlerFunctionArn}",
+                "Payload": {
+                  "bill.$": "$.ParsedBill.Payload"
+                }
+              },
+              "Next": "DetectAnomalies"
+            },
+            "DetectAnomalies": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${AnomalyHandlerFunctionArn}",
+                "Payload": {
+                  "bill.$": "$.ParsedBill.Payload",
+                  "history_comparison.$": "$.Payload"
+                }
+              },
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.ValidationAndAnomalyResults",
+      "Next": "StoreResults"
+    },
+    "StoreResults": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${StoreResultsHandlerFunctionArn}",
+        "Payload": {
+          "bill.$": "$.ParsedBill.Payload",
+          "findings.$": "$.ValidationAndAnomalyResults"
+        }
+      },
+      "End": true
+    }
+  }
+}

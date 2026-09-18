@@ -1,0 +1,41 @@
+{
+  "bill_id": "bill-july-001",
+  "user_id": "user-123",
+  "bill_type": "internet",
+  "provider": "Example Provider",
+  "billing_period": {
+    "start_date": "2026-07-01",
+    "end_date": "2026-07-31"
+  },
+  "issue_date": "2026-08-01",
+  "due_date": "2026-08-15",
+  "currency": "INR",
+  "subtotal": 5420,
+  "tax": 0,
+  "total": 5420,
+  "line_items": [
+    {
+      "description": "Internet Plan",
+      "quantity": 1,
+      "unit_price": 5000,
+      "amount": 5000,
+      "page": 1,
+      "line_number": 10
+    },
+    {
+      "description": "Usage",
+      "quantity": 1,
+      "unit_price": 420,
+      "amount": 420,
+      "page": 1,
+      "line_number": 11
+    }
+  ],
+  "source_document": {
+    "s3_key": "july_bill.pdf",
+    "page_count": 2
+  },
+  "extraction_status": "completed",
+  "created_at": "2026-08-02T10:00:00Z",
+  "updated_at": "2026-08-02T10:00:00Z"
+}

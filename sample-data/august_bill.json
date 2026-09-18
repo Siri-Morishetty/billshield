@@ -1,0 +1,65 @@
+{
+  "bill_id": "bill-aug-001",
+  "user_id": "user-123",
+  "bill_type": "internet",
+  "provider": "Example Provider",
+  "billing_period": {
+    "start_date": "2026-08-01",
+    "end_date": "2026-08-31"
+  },
+  "issue_date": "2026-09-01",
+  "due_date": "2026-09-15",
+  "currency": "INR",
+  "subtotal": 6000,
+  "tax": 840,
+  "total": 6840,
+  "line_items": [
+    {
+      "description": "Internet Plan",
+      "quantity": 1,
+      "unit_price": 5000,
+      "amount": 5000,
+      "page": 1,
+      "line_number": 10
+    },
+    {
+      "description": "Usage",
+      "quantity": 1,
+      "unit_price": 840,
+      "amount": 840,
+      "page": 1,
+      "line_number": 11
+    },
+    {
+      "description": "Premium Support",
+      "quantity": 1,
+      "unit_price": 299,
+      "amount": 299,
+      "page": 2,
+      "line_number": 14
+    },
+    {
+      "description": "New Service Fee",
+      "quantity": 1,
+      "unit_price": 300,
+      "amount": 300,
+      "page": 2,
+      "line_number": 15
+    },
+    {
+      "description": "Discount",
+      "quantity": 1,
+      "unit_price": -439,
+      "amount": -439,
+      "page": 2,
+      "line_number": 16
+    }
+  ],
+  "source_document": {
+    "s3_key": "august_bill.pdf",
+    "page_count": 2
+  },
+  "extraction_status": "completed",
+  "created_at": "2026-09-02T10:00:00Z",
+  "updated_at": "2026-09-02T10:00:00Z"
+}
