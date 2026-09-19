@@ -1,71 +1,107 @@
+"""
+BillShield Amazon Bedrock Service
+Generates grounded explanations based on VERIFIED structured findings.
+Bedrock NEVER determines whether a math error exists — it only explains.
+Falls back gracefully if credentials are missing.
+"""
 import os
 import json
-import boto3
-from typing import Dict, Any, List
+from typing import List, Dict, Any, Optional
 
 USE_MOCK_AWS = os.getenv("USE_MOCK_AWS", "true").lower() == "true"
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 SYSTEM_PROMPT = """You are BillShield, an evidence-grounded financial bill explanation assistant.
-Never invent amounts, dates, charges, calculations, providers, or historical occurrences.
-Use only the structured evidence provided to you.
-If evidence is insufficient, explicitly say that the available evidence is insufficient.
-Do not accuse a provider of fraud.
-Describe findings as items that deserve review.
-Separate verified calculations from interpretations."""
+
+CRITICAL RULES:
+1. Never invent, guess, or calculate amounts, dates, charges, or percentages.
+2. Use ONLY the structured evidence provided in the input JSON.
+3. If evidence is insufficient, explicitly say so.
+4. Do NOT accuse any provider of fraud.
+5. Use language like "mismatch detected", "unexpected charge", "needs review".
+6. Separate verified mathematical findings from observations.
+7. Be concise, clear, and consumer-friendly.
+8. Format your response with markdown headings and bullet points."""
+
 
 class BedrockService:
+
     @staticmethod
-    def generate_explanation(finding_type: str, charge: str, amount: float, evidence: List[Dict]) -> str:
-        if USE_MOCK_AWS:
-            return f"Based on the evidence, the {charge} of ₹{amount} appears to be a new charge not present in previous bills. This item deserves your review."
-            
-        bedrock = boto3.client('bedrock-runtime')
-        
-        prompt = f"""
-        Explain the following finding based ONLY on the evidence:
-        Finding Type: {finding_type}
-        Charge: {charge}
-        Amount: {amount}
-        Evidence: {json.dumps(evidence)}
+    def generate_full_explanation(
+        bill: Any,
+        findings: List[Any],
+        comparison: Dict[str, Any],
+    ) -> Optional[str]:
         """
-        
-        payload = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 1000,
-            "system": SYSTEM_PROMPT,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": prompt}]
-                }
-            ]
-        }
-        
-        response = bedrock.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(payload)
-        )
-        
-        response_body = json.loads(response.get('body').read())
-        return response_body.get('content')[0].get('text')
-
-    @staticmethod
-    def generate_questions(evidence: List[Dict]) -> List[str]:
+        Generate a human-readable explanation using Amazon Bedrock Claude.
+        Returns None if Bedrock is unavailable (caller should use deterministic fallback).
+        All numbers come from the verified findings — Bedrock only explains.
+        """
         if USE_MOCK_AWS:
-            return [
-                "When was Premium Support activated?",
-                "Was this service added to my plan automatically?",
-                "What does this charge cover exactly?"
-            ]
-        # Real bedrock implementation similar to above would go here
-        return []
+            return None  # Let caller use deterministic explanation
 
-    @staticmethod
-    def generate_clarification_message(evidence: List[Dict]) -> str:
-        if USE_MOCK_AWS:
-            return "Hello, I noticed a ₹299 Premium Support charge on my August bill that was not present on my previous bills. Could you please clarify when this service was added and what the charge covers?"
-        # Real bedrock implementation similar to above would go here
-        return ""
+        try:
+            import boto3
+            bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+
+            # Build a structured prompt — numbers are pre-verified by deterministic engines
+            finding_summaries = []
+            for f in findings:
+                fd = f.evidence or {}
+                finding_summaries.append({
+                    "type": f.type,
+                    "priority": f.priority,
+                    "title": f.title,
+                    "description": f.description,
+                    "amount": f.amount,
+                    "evidence": fd,  # pre-verified structured evidence
+                })
+
+            prompt_data = {
+                "bill": {
+                    "provider": bill.provider,
+                    "bill_type": bill.bill_type,
+                    "total": bill.total,
+                    "subtotal": bill.subtotal,
+                    "tax": bill.tax,
+                    "tax_rate": bill.tax_rate,
+                },
+                "historical_comparison": comparison,
+                "verified_findings": finding_summaries,
+                "instruction": (
+                    "Based ONLY on the verified findings above, explain to the consumer: "
+                    "(1) what issues were detected, (2) why they matter, "
+                    "(3) what specific questions they should ask their provider. "
+                    "Do not recalculate any numbers. Use exactly the amounts from the findings."
+                ),
+            }
+
+            payload = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 1500,
+                "system": SYSTEM_PROMPT,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": json.dumps(prompt_data, indent=2)}],
+                    }
+                ],
+            }
+
+            response = bedrock.invoke_model(
+                modelId=BEDROCK_MODEL_ID,
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps(payload),
+            )
+
+            body = json.loads(response["body"].read())
+            text = body.get("content", [{}])[0].get("text", "")
+            if text:
+                return text + "\n\n---\n*Explanation generated by Amazon Bedrock (Claude 3). Mathematical findings were verified deterministically.*"
+            return None
+
+        except Exception as e:
+            print(f"[Bedrock] Error: {e}. Falling back to deterministic explanation.")
+            return None

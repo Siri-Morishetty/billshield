@@ -1,213 +1,411 @@
-import { getBill, getFindings, getBills, formatCurrency, calculatePercentageChange } from "@/lib/api";
+import { getBill, getFindings, getHistoryComparison, formatCurrency, calculatePercentageChange } from "@/lib/api";
+import { Finding } from "@/lib/types";
 import Link from "next/link";
-import { ArrowUpRight, ChevronRight, FileText, Bot } from "lucide-react";
+import {
+  ArrowUpRight, ChevronRight, FileText, Bot,
+  ShieldCheck, AlertTriangle, TrendingUp, TrendingDown, Info
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default async function BillPage({ params }: { params: { id: string } }) {
-  const [bill, findings, allBills] = await Promise.all([
-    getBill(params.id),
-    getFindings(params.id),
-    getBills(),
+function SeverityIcon({ priority }: { priority: string }) {
+  if (priority === "HIGH") return <span className="text-lg" aria-label="High priority">🔴</span>;
+  if (priority === "MEDIUM") return <span className="text-lg" aria-label="Medium priority">🟡</span>;
+  return <span className="text-lg" aria-label="Low priority">🔵</span>;
+}
+
+function FindingTypeIcon({ type }: { type: string }) {
+  const icons: Record<string, React.ReactNode> = {
+    TOTAL_MISMATCH:           <AlertTriangle className="w-4 h-4 text-red-400" />,
+    CALCULATION_DISCREPANCY:  <AlertTriangle className="w-4 h-4 text-red-400" />,
+    LINE_ITEM_MISMATCH:       <AlertTriangle className="w-4 h-4 text-red-400" />,
+    NEW_CHARGE:               <TrendingUp className="w-4 h-4 text-orange-400" />,
+    PRICE_INCREASE:           <TrendingUp className="w-4 h-4 text-orange-400" />,
+    PRICE_DECREASE:           <TrendingDown className="w-4 h-4 text-blue-400" />,
+    QUANTITY_CHANGE:          <Info className="w-4 h-4 text-yellow-400" />,
+    DUPLICATE_CHARGE:         <AlertTriangle className="w-4 h-4 text-orange-400" />,
+    UNUSUAL_INCREASE:         <TrendingUp className="w-4 h-4 text-orange-400" />,
+  };
+  return <>{icons[type] ?? <Info className="w-4 h-4 text-gray-400" />}</>;
+}
+
+function EvidenceCard({ finding }: { finding: Finding }) {
+  const ev = finding.evidence as Record<string, unknown> | null;
+  if (!ev) return null;
+
+  return (
+    <div className="mt-3 bg-black/40 rounded-xl p-4 border border-white/5 space-y-2 text-sm">
+      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Evidence</p>
+
+      {finding.type === "TOTAL_MISMATCH" && (
+        <div className="space-y-1.5 font-mono">
+          {typeof ev.subtotal === "number" && (
+            <div className="flex justify-between"><span className="text-gray-400">Subtotal</span><span>{formatCurrency(ev.subtotal as number)}</span></div>
+          )}
+          {typeof ev.discount === "number" && ev.discount > 0 && (
+            <div className="flex justify-between text-green-400"><span>Discount</span><span>−{formatCurrency(ev.discount as number)}</span></div>
+          )}
+          {typeof ev.fees === "number" && ev.fees > 0 && (
+            <div className="flex justify-between"><span className="text-gray-400">Fees</span><span>{formatCurrency(ev.fees as number)}</span></div>
+          )}
+          {typeof ev.tax === "number" && ev.tax > 0 && (
+            <div className="flex justify-between"><span className="text-gray-400">Tax</span><span>{formatCurrency(ev.tax as number)}</span></div>
+          )}
+          <div className="flex justify-between pt-1 border-t border-white/10 text-emerald-400 font-bold">
+            <span>Calculated total</span>
+            <span>{formatCurrency(ev.calculated_total as number)}</span>
+          </div>
+          <div className="flex justify-between text-red-400 font-bold">
+            <span>Reported total</span>
+            <span>{formatCurrency(ev.reported_total as number)}</span>
+          </div>
+          <div className="flex justify-between text-orange-400 font-bold">
+            <span>Difference</span>
+            <span>₹{((ev.difference as number) || 0).toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+
+      {finding.type === "CALCULATION_DISCREPANCY" && Array.isArray(ev.line_items) && (
+        <div className="space-y-1 font-mono">
+          {(ev.line_items as Array<{description: string; amount: number}>).map((li, i) => (
+            <div key={i} className="flex justify-between text-gray-300">
+              <span className="truncate pr-4">{li.description}</span>
+              <span>{formatCurrency(li.amount)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between pt-1 border-t border-white/10 text-emerald-400 font-bold">
+            <span>Sum of line items</span>
+            <span>{formatCurrency(ev.calculated_sum as number)}</span>
+          </div>
+          <div className="flex justify-between text-red-400 font-bold">
+            <span>Reported subtotal</span>
+            <span>{formatCurrency(ev.reported_subtotal as number)}</span>
+          </div>
+        </div>
+      )}
+
+      {(finding.type === "PRICE_INCREASE" || finding.type === "PRICE_DECREASE") && (
+        <div className="space-y-1.5 font-mono">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Previous price</span>
+            <span>{formatCurrency(ev.previous_price as number)}</span>
+          </div>
+          <div className="flex justify-between font-bold">
+            <span className="text-gray-400">Current price</span>
+            <span className={finding.type === "PRICE_INCREASE" ? "text-red-400" : "text-green-400"}>
+              {formatCurrency(ev.current_price as number)}
+            </span>
+          </div>
+          <div className={`flex justify-between font-bold pt-1 border-t border-white/10 ${finding.type === "PRICE_INCREASE" ? "text-red-400" : "text-green-400"}`}>
+            <span>Change</span>
+            <span>
+              {finding.type === "PRICE_INCREASE" ? "+" : "−"}
+              {formatCurrency(Math.abs(ev.difference as number))}
+              {" "}({Math.abs(ev.percentage_change as number).toFixed(1)}%)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {finding.type === "NEW_CHARGE" && (
+        <div className="space-y-1 text-gray-300">
+          <p>First appeared on this bill.</p>
+          <p>Checked <strong className="text-white">{ev.previous_bills_checked as number}</strong> previous bill(s) — not found in any.</p>
+          <p className="font-mono text-orange-400 font-bold">{formatCurrency(ev.amount as number)}</p>
+        </div>
+      )}
+
+      {finding.type === "DUPLICATE_CHARGE" && (
+        <div className="space-y-1 text-gray-300 font-mono">
+          <p>Appears <strong className="text-white">{ev.occurrences as number} times</strong> at {formatCurrency(ev.amount as number)} each.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default async function BillPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const [bill, findings, comparison] = await Promise.all([
+    getBill(id),
+    getFindings(id),
+    getHistoryComparison(id),
   ]);
 
   if (!bill) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] space-y-6">
-        <h2 className="text-3xl font-bold text-white">Bill Not Found</h2>
-        <p className="text-gray-400">This bill may have been reset or does not exist.</p>
-        <Link href="/dashboard" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold">
+        <div className="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center border border-gray-800">
+          <FileText className="w-10 h-10 text-gray-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-white">Bill Not Found</h2>
+        <p className="text-gray-400">This bill does not exist or has been cleared.</p>
+        <Link href="/dashboard" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors">
           ← Back to Dashboard
         </Link>
       </div>
     );
   }
 
-  // Find the previous bill (same provider, different ID)
-  const sameBills = allBills.filter((b) => b.provider === bill.provider);
-  const currentIdx = sameBills.findIndex((b) => b.bill_id === params.id);
-  const previousBill = sameBills[currentIdx + 1] || null;
-
-  const pctChange = previousBill
-    ? calculatePercentageChange(bill.total, previousBill.total)
-    : null;
-
-  const newCharges = findings.filter((f: any) => f.type === "NEW_CHARGE");
+  const prevTotal = comparison?.previous_total ?? 0;
+  const pctChange = prevTotal > 0 ? calculatePercentageChange(bill.total, prevTotal) : null;
+  const highFindings = findings.filter((f: Finding) => f.priority === "HIGH");
+  const medFindings = findings.filter((f: Finding) => f.priority === "MEDIUM");
+  const lowFindings = findings.filter((f: Finding) => f.priority === "LOW");
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-400 font-medium">
-        <Link href="/dashboard" className="hover:text-white">Dashboard</Link>
+        <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
         <ChevronRight className="w-4 h-4" />
-        <span className="text-white">Bill Details</span>
+        <span className="text-white truncate">{bill.provider}</span>
       </div>
+
+      {/* Demo label banner */}
+      {bill.is_demo && (
+        <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl px-5 py-3 flex items-center gap-3">
+          <span className="text-purple-400 text-sm font-bold">📊 DEMO BILL</span>
+          <span className="text-gray-400 text-sm">{bill.demo_description}</span>
+        </div>
+      )}
 
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start gap-4">
         <div>
-          <h1 className="text-4xl font-extrabold uppercase">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-white leading-tight">
             {bill.issue_date
               ? new Date(bill.issue_date).toLocaleString("default", { month: "long", year: "numeric" })
-              : "Current"}{" "}BILL
+              : "Current"}{" "}Bill
           </h1>
-          <p className="text-gray-400 mt-2 text-lg">{bill.provider}</p>
+          <p className="text-gray-400 mt-1 text-lg">{bill.provider}</p>
           {bill.invoice_number && (
-            <p className="text-gray-600 text-sm mt-1">Invoice: {bill.invoice_number}</p>
+            <p className="text-gray-600 text-sm mt-0.5">Invoice: {bill.invoice_number}</p>
           )}
         </div>
-        <div className="text-right">
-          <p className="text-4xl font-extrabold">{formatCurrency(bill.total)}</p>
+        <div className="text-right flex-shrink-0">
+          <p className="text-3xl md:text-4xl font-extrabold text-white">{formatCurrency(bill.total)}</p>
           {pctChange !== null && pctChange !== 0 && (
-            <p className={`${pctChange > 0 ? "text-red-400" : "text-green-400"} font-medium flex items-center justify-end gap-1 mt-2`}>
+            <p className={`${pctChange > 0 ? "text-red-400" : "text-green-400"} font-semibold flex items-center justify-end gap-1 mt-1 text-sm`}>
               <ArrowUpRight className={`w-4 h-4 ${pctChange < 0 ? "rotate-180" : ""}`} />
-              {Math.abs(pctChange).toFixed(2)}% vs previous
+              {Math.abs(pctChange).toFixed(1)}% vs previous
             </p>
           )}
+          {bill.due_date && <p className="text-gray-500 text-sm mt-1">Due {bill.due_date}</p>}
         </div>
       </div>
 
-      {/* Details + Findings */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Details */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h3 className="font-bold flex items-center gap-2">
-            <FileText className="w-5 h-5 text-gray-400" /> DETAILS
+      {/* Summary cards */}
+      <div className="grid md:grid-cols-2 gap-5">
+        {/* Bill details */}
+        <div className="bg-white/4 border border-white/8 rounded-2xl p-6 space-y-4">
+          <h3 className="font-bold text-sm uppercase tracking-widest text-gray-400 flex items-center gap-2">
+            <FileText className="w-4 h-4" /> Bill Details
           </h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-400">Type</span>
-              <span className="capitalize">{bill.bill_type}</span>
+              <span className="capitalize font-medium">{bill.bill_type}</span>
             </div>
             {bill.billing_period && (
               <div className="flex justify-between">
-                <span className="text-gray-400">Billing Period</span>
-                <span>{bill.billing_period.start_date} – {bill.billing_period.end_date}</span>
+                <span className="text-gray-400">Period</span>
+                <span className="font-medium">{bill.billing_period.start_date} – {bill.billing_period.end_date}</span>
+              </div>
+            )}
+            {bill.due_date && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Due Date</span>
+                <span className="font-medium">{bill.due_date}</span>
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-gray-400">Due Date</span>
-              <span>{bill.due_date || "N/A"}</span>
+              <span className="text-gray-400">Extraction</span>
+              <span className="text-xs font-mono text-blue-400">{bill.extraction_status}</span>
             </div>
           </div>
-
-          {/* Financial summary */}
-          <div className="pt-4 border-t border-gray-800 space-y-2 text-sm">
+          <div className="pt-3 border-t border-white/8 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-400">Subtotal</span>
-              <span>{formatCurrency(bill.subtotal)}</span>
+              <span className="font-mono">{formatCurrency(bill.subtotal)}</span>
             </div>
             {bill.discount > 0 && (
               <div className="flex justify-between text-green-400">
                 <span>Discount</span>
-                <span>-{formatCurrency(bill.discount)}</span>
+                <span className="font-mono">−{formatCurrency(bill.discount)}</span>
               </div>
             )}
             {bill.tax > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-400">GST ({bill.tax_rate}%)</span>
-                <span>{formatCurrency(bill.tax)}</span>
+                <span className="font-mono">{formatCurrency(bill.tax)}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-700">
+            {bill.fees > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Fees</span>
+                <span className="font-mono">{formatCurrency(bill.fees)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-base pt-2 border-t border-white/8">
               <span>Total</span>
-              <span>{formatCurrency(bill.total)}</span>
-            </div>
-          </div>
-
-          <div className="pt-4">
-            <Link
-              href={`/investigate/${bill.bill_id}`}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors"
-            >
-              <Bot className="w-5 h-5" /> Investigate Bill
-            </Link>
-          </div>
-        </div>
-
-        {/* Findings */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h3 className="font-bold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-orange-500" /> FINDINGS
-          </h3>
-          <div className="space-y-3">
-            {findings.length > 0 ? (
-              findings.map((f: any) => (
-                <div key={f.finding_id} className="flex gap-3 text-sm">
-                  <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
-                    f.priority === "HIGH" ? "bg-red-500" :
-                    f.priority === "MEDIUM" ? "bg-orange-500" : "bg-yellow-500"
-                  }`} />
-                  <div>
-                    <p className="font-semibold">{f.title}</p>
-                    <p className="text-gray-400">{f.description}</p>
-                    {f.amount != null && (
-                      <p className="text-white font-mono mt-0.5">{formatCurrency(f.amount)}</p>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-gray-400 text-sm">No issues detected — all calculations are valid.</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Line items */}
-      {bill.line_items && bill.line_items.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h3 className="font-bold">LINE ITEMS</h3>
-          <div className="space-y-2">
-            {bill.line_items.map((item: any, i: number) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-gray-300">{item.description}</span>
-                <span className="font-mono">{formatCurrency(item.amount)}</span>
-              </div>
-            ))}
-            <div className="flex justify-between font-bold pt-2 border-t border-gray-700">
-              <span>Sum of line items</span>
-              <span className="font-mono">{formatCurrency(bill.line_items.reduce((s: number, i: any) => s + i.amount, 0))}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Why did it increase? */}
-      {pctChange !== null && pctChange > 0 && previousBill && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
-          <h3 className="font-bold">WHY DID IT INCREASE?</h3>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Previous bill</span>
-              <span className="font-mono">{formatCurrency(previousBill.total)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Current bill</span>
               <span className="font-mono">{formatCurrency(bill.total)}</span>
             </div>
-            <div className="flex justify-between font-bold border-t border-gray-700 pt-2 text-red-400">
-              <span>Increase</span>
-              <span className="font-mono">+{formatCurrency(bill.total - previousBill.total)} (+{Math.abs(pctChange).toFixed(2)}%)</span>
-            </div>
           </div>
+          <Link
+            href={`/investigate/${bill.bill_id}`}
+            id={`btn-investigate-${bill.bill_id}`}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors text-sm"
+          >
+            <Bot className="w-4 h-4" /> Investigate with AI
+          </Link>
+        </div>
 
-          {newCharges.length > 0 && (
+        {/* Findings summary */}
+        <div className="bg-white/4 border border-white/8 rounded-2xl p-6 space-y-4">
+          <h3 className="font-bold text-sm uppercase tracking-widest text-gray-400 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-orange-400" /> Findings ({findings.length})
+          </h3>
+          {findings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 space-y-3">
+              <ShieldCheck className="w-12 h-12 text-green-500" />
+              <p className="font-bold text-green-300">No issues detected</p>
+              <p className="text-gray-500 text-sm text-center">All calculations verified. No unusual charges found.</p>
+            </div>
+          ) : (
             <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-300">New charges driving the increase:</p>
-              {newCharges.map((f: any, i: number) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="w-48 text-gray-400 text-sm truncate">{f.title}</div>
-                  <div className="flex-1 h-3 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-orange-500 rounded-full" style={{
-                      width: `${Math.min(100, ((f.amount || 0) / (bill.total - previousBill.total)) * 100)}%`
-                    }} />
+              {findings.map((f: Finding) => (
+                <div key={f.finding_id} className="flex gap-3 text-sm">
+                  <SeverityIcon priority={f.priority} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white">{f.title}</p>
+                    <p className="text-gray-400 text-xs mt-0.5 line-clamp-2">{f.description}</p>
+                    {f.amount != null && (
+                      <p className="font-mono text-white font-bold mt-1">{formatCurrency(f.amount)}</p>
+                    )}
                   </div>
-                  <div className="w-28 text-right font-mono text-sm">+{formatCurrency(f.amount || 0)}</div>
                 </div>
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Detailed findings with evidence */}
+      {findings.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-white">Findings & Evidence</h2>
+          <div className="space-y-4">
+            {([...highFindings, ...medFindings, ...lowFindings] as Finding[]).map((f) => (
+              <div
+                key={f.finding_id}
+                className={`rounded-2xl p-5 border space-y-1 ${
+                  f.priority === "HIGH"
+                    ? "bg-red-500/5 border-red-500/20"
+                    : f.priority === "MEDIUM"
+                    ? "bg-orange-500/5 border-orange-500/20"
+                    : "bg-yellow-500/5 border-yellow-500/20"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <FindingTypeIcon type={f.type} />
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-bold text-white">{f.title}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                          f.priority === "HIGH"
+                            ? "bg-red-500/20 text-red-400"
+                            : f.priority === "MEDIUM"
+                            ? "bg-orange-500/20 text-orange-400"
+                            : "bg-yellow-500/20 text-yellow-400"
+                        }`}>{f.priority}</span>
+                      </div>
+                      <p className="text-gray-400 text-sm mt-1">{f.description}</p>
+                    </div>
+                  </div>
+                  {f.amount != null && (
+                    <p className="font-mono font-bold text-white whitespace-nowrap text-lg flex-shrink-0">
+                      {formatCurrency(f.amount)}
+                    </p>
+                  )}
+                </div>
+                <EvidenceCard finding={f} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Line items table */}
+      {bill.line_items && bill.line_items.length > 0 && (
+        <div className="bg-white/4 border border-white/8 rounded-2xl p-6 space-y-4">
+          <h3 className="font-bold text-sm uppercase tracking-widest text-gray-400">Line Items</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/8">
+                  <th className="text-left py-2 text-gray-500 font-semibold">Description</th>
+                  <th className="text-right py-2 text-gray-500 font-semibold">Qty</th>
+                  <th className="text-right py-2 text-gray-500 font-semibold">Unit Price</th>
+                  <th className="text-right py-2 text-gray-500 font-semibold">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {bill.line_items.map((item, i) => {
+                  const lineTotal = item.quantity * item.unit_price;
+                  const mismatch = Math.abs(lineTotal - item.amount) > 0.02;
+                  return (
+                    <tr key={i} className={mismatch ? "bg-red-500/5" : ""}>
+                      <td className="py-3 text-gray-200">{item.description}</td>
+                      <td className="py-3 text-right text-gray-400 font-mono">{item.quantity}</td>
+                      <td className="py-3 text-right text-gray-400 font-mono">{formatCurrency(item.unit_price)}</td>
+                      <td className={`py-3 text-right font-mono font-semibold ${mismatch ? "text-red-400" : "text-white"}`}>
+                        {formatCurrency(item.amount)}
+                        {mismatch && <span className="ml-1 text-xs text-red-500">(expected {formatCurrency(lineTotal)})</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-white/10">
+                  <td colSpan={3} className="py-3 font-bold text-gray-300">Sum of line items</td>
+                  <td className="py-3 text-right font-mono font-bold text-white">
+                    {formatCurrency(bill.line_items.reduce((s, i) => s + i.amount, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Historical comparison */}
+      {comparison && comparison.previous_total > 0 && (
+        <div className="bg-white/4 border border-white/8 rounded-2xl p-6 space-y-4">
+          <h3 className="font-bold text-sm uppercase tracking-widest text-gray-400">Historical Comparison</h3>
+          <div className="grid sm:grid-cols-3 gap-4 text-sm">
+            <div className="bg-white/3 rounded-xl p-4">
+              <p className="text-gray-500 text-xs mb-1">Previous Total</p>
+              <p className="font-mono font-bold text-white text-lg">{formatCurrency(comparison.previous_total)}</p>
+            </div>
+            <div className="bg-white/3 rounded-xl p-4">
+              <p className="text-gray-500 text-xs mb-1">Current Total</p>
+              <p className="font-mono font-bold text-white text-lg">{formatCurrency(comparison.current_total)}</p>
+            </div>
+            <div className={`rounded-xl p-4 ${comparison.absolute_difference > 0 ? "bg-red-500/10" : comparison.absolute_difference < 0 ? "bg-green-500/10" : "bg-white/3"}`}>
+              <p className="text-gray-500 text-xs mb-1">Change</p>
+              <p className={`font-mono font-bold text-lg ${comparison.absolute_difference > 0 ? "text-red-400" : comparison.absolute_difference < 0 ? "text-green-400" : "text-white"}`}>
+                {comparison.absolute_difference > 0 ? "+" : ""}{formatCurrency(comparison.absolute_difference)}
+              </p>
+              <p className={`text-xs font-semibold ${comparison.absolute_difference > 0 ? "text-red-400" : "text-green-400"}`}>
+                {comparison.percentage_difference.toFixed(1)}%
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

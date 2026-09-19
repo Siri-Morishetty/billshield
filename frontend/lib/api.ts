@@ -1,8 +1,8 @@
-import { Bill, Finding } from './types';
+import { Bill, Finding, DemoBill, InvestigationResult, HistoryComparison } from './types';
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
-/** Format any amount as INR currency with 2 decimal places. Single source of truth. */
+/** Format any amount as INR currency. Single source of truth. */
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -12,35 +12,27 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-/** Calculate percentage change between two values. Returns null if previous is 0. */
+/** Calculate % change between two values. Returns null if previous is 0. */
 export function calculatePercentageChange(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
   return ((current - previous) / previous) * 100;
 }
 
-export async function processUploadedBill(file: File) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch(`${API_BASE}/upload`, {
-    method: "POST",
-    body: formData,
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    cache: "no-store",
+    ...options,
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Upload failed: ${err}`);
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`API error ${res.status}: ${text}`);
   }
-  return res.json();
-}
-
-export async function clearAllData() {
-  await fetch(`${API_BASE}/clear`, { method: "POST" });
+  return res.json() as Promise<T>;
 }
 
 export async function getBills(): Promise<Bill[]> {
   try {
-    const res = await fetch(`${API_BASE}/bills`, { cache: "no-store" });
-    if (!res.ok) return [];
-    return await res.json();
+    return await apiFetch<Bill[]>("/bills");
   } catch {
     return [];
   }
@@ -49,9 +41,7 @@ export async function getBills(): Promise<Bill[]> {
 export async function getBill(id: string): Promise<Bill | null> {
   if (!id || id === "undefined") return null;
   try {
-    const res = await fetch(`${API_BASE}/bills/${id}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    return await res.json();
+    return await apiFetch<Bill>(`/bills/${id}`);
   } catch {
     return null;
   }
@@ -60,17 +50,80 @@ export async function getBill(id: string): Promise<Bill | null> {
 export async function getFindings(billId: string): Promise<Finding[]> {
   if (!billId || billId === "undefined") return [];
   try {
-    const res = await fetch(`${API_BASE}/bills/${billId}/findings`, { cache: "no-store" });
-    if (!res.ok) return [];
-    return await res.json();
+    return await apiFetch<Finding[]>(`/bills/${billId}/findings`);
   } catch {
     return [];
   }
 }
 
-export async function investigateBill(billId: string): Promise<any> {
+export async function getHistoryComparison(billId: string): Promise<HistoryComparison | null> {
+  if (!billId) return null;
+  try {
+    return await apiFetch<HistoryComparison>(`/bills/${billId}/history-comparison`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getDemoBills(): Promise<DemoBill[]> {
+  try {
+    return await apiFetch<DemoBill[]>("/demo-bills");
+  } catch {
+    return [];
+  }
+}
+
+export async function investigateBill(billId: string): Promise<InvestigationResult> {
   if (!billId || billId === "undefined") throw new Error("Invalid bill ID");
-  const res = await fetch(`${API_BASE}/investigate/${billId}`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to investigate");
-  return await res.json();
+  return apiFetch<InvestigationResult>(`/investigate/${billId}`);
+}
+
+export async function processUploadedBill(file: File): Promise<{
+  bill_id: string;
+  extraction_mode: string;
+  findings_count: number;
+  high_findings: number;
+  provider: string;
+  total: number;
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/upload`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch {
+    throw new Error("Cannot connect to backend at http://localhost:8000. Please ensure the backend server is running with 'python -m uvicorn src.main:app --port 8000'.");
+  }
+  if (!res.ok) {
+    let errMsg = `Upload failed (${res.status})`;
+    try {
+      const data = await res.json();
+      errMsg = data.detail || JSON.stringify(data);
+    } catch {
+      const text = await res.text().catch(() => "");
+      if (text) errMsg = text;
+    }
+    throw new Error(errMsg);
+  }
+  return res.json();
+}
+
+export async function clearUploadedBills(): Promise<void> {
+  await fetch(`${API_BASE}/clear`, { method: "POST" });
+}
+
+export async function getHealthStatus(): Promise<{
+  status: string;
+  mode: string;
+  demo_bills: number;
+  uploaded_bills: number;
+} | null> {
+  try {
+    return await apiFetch("/health");
+  } catch {
+    return null;
+  }
 }

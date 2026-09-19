@@ -23,7 +23,7 @@ def _load_module(rel_path: str, name: str):
 # We build stubs for pydantic models to avoid relative import hell
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 class LineItem(BaseModel):
     description: str
@@ -57,8 +57,8 @@ class Bill(BaseModel):
     line_items: List[LineItem] = []
     source_document: Optional[object] = None
     extraction_status: str = "completed"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Finding(BaseModel):
     finding_id: str
