@@ -164,7 +164,7 @@ export default function Dashboard() {
               <div className="p-6 rounded-2xl bg-gradient-to-br from-blue-900/30 to-blue-900/10 border border-blue-500/20 space-y-2 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -mr-8 -mt-8" />
                 <p className="text-blue-200 font-semibold text-xs tracking-widest uppercase">Latest Bill</p>
-                <p className="text-4xl font-black text-white">{formatCurrency(mostRecentBill!.total)}</p>
+                <p className="text-4xl font-black text-white">{formatCurrency(mostRecentBill!.total, mostRecentBill!.currency)}</p>
                 {pctChange !== null && pctChange !== 0 && (
                   <div className={`flex items-center gap-1 w-fit px-2 py-1 rounded-lg text-xs font-bold ${
                     pctChange > 0 ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"
@@ -188,7 +188,7 @@ export default function Dashboard() {
               <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-900/30 to-emerald-900/10 border border-emerald-500/20 space-y-2 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-8 -mt-8" />
                 <p className="text-emerald-200 font-semibold text-xs tracking-widest uppercase">Review Amount</p>
-                <p className="text-4xl font-black text-white">{formatCurrency(reviewAmount)}</p>
+                <p className="text-4xl font-black text-white">{formatCurrency(reviewAmount, mostRecentBill?.currency)}</p>
                 <p className="text-gray-500 text-sm">Sum of flagged charges</p>
               </div>
             </div>
@@ -211,22 +211,25 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {allFindings.slice(0, 5).map((finding) => (
-                    <Link href={`/investigate/${finding.bill_id}`} key={finding.finding_id}>
-                      <div className="p-4 rounded-xl bg-white/4 border border-white/8 hover:border-orange-500/40 hover:bg-white/8 transition-all flex justify-between items-start group">
-                        <div className="flex gap-3 items-start">
-                          <SeverityBadge priority={finding.priority} />
-                          <div>
-                            <p className="font-semibold text-gray-200 group-hover:text-white text-sm">{finding.title}</p>
-                            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{finding.description}</p>
+                  {allFindings.slice(0, 5).map((finding) => {
+                    const bill = uploadedBills.find((b) => b.bill_id === finding.bill_id);
+                    return (
+                      <Link href={`/investigate/${finding.bill_id}`} key={finding.finding_id}>
+                        <div className="p-4 rounded-xl bg-white/4 border border-white/8 hover:border-orange-500/40 hover:bg-white/8 transition-all flex justify-between items-start group">
+                          <div className="flex gap-3 items-start">
+                            <SeverityBadge priority={finding.priority} />
+                            <div>
+                              <p className="font-semibold text-gray-200 group-hover:text-white text-sm">{finding.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{finding.description}</p>
+                            </div>
                           </div>
+                          {finding.amount != null && (
+                            <p className="font-mono font-bold text-white whitespace-nowrap ml-4 text-sm">{formatCurrency(finding.amount, bill?.currency)}</p>
+                          )}
                         </div>
-                        {finding.amount != null && (
-                          <p className="font-mono font-bold text-white whitespace-nowrap ml-4 text-sm">{formatCurrency(finding.amount)}</p>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -253,7 +256,7 @@ export default function Dashboard() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-white text-sm">{formatCurrency(bill.total)}</p>
+                        <p className="font-bold text-white text-sm">{formatCurrency(bill.total, bill.currency)}</p>
                         {bill.due_date && <p className="text-xs text-gray-500">Due {bill.due_date}</p>}
                       </div>
                     </div>

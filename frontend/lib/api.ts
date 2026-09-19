@@ -2,19 +2,36 @@ import { Bill, Finding, DemoBill, InvestigationResult, HistoryComparison } from 
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
-/** Format any amount as INR currency. Single source of truth. */
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+/** Format amount dynamically based on detected currency. Single source of truth. */
+export function formatCurrency(amount: number | null | undefined, currency?: string): string {
+  if (amount == null || isNaN(amount)) {
+    return "—";
+  }
+  const curr = (currency || "INR").toUpperCase();
+  const localeMap: Record<string, string> = {
+    USD: "en-US",
+    INR: "en-IN",
+    EUR: "de-DE",
+    GBP: "en-GB",
+    AUD: "en-AU",
+    CAD: "en-CA",
+  };
+  const locale = localeMap[curr] || "en-US";
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: curr,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${curr} ${amount.toFixed(2)}`;
+  }
 }
 
-/** Calculate % change between two values. Returns null if previous is 0. */
-export function calculatePercentageChange(current: number, previous: number): number | null {
-  if (previous === 0) return current === 0 ? 0 : null;
+/** Calculate % change between two values. Returns null if previous is 0 or values are missing. */
+export function calculatePercentageChange(current?: number | null, previous?: number | null): number | null {
+  if (current == null || previous == null || previous === 0) return null;
   return ((current - previous) / previous) * 100;
 }
 

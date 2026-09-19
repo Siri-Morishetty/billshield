@@ -45,7 +45,7 @@ export default async function HistoryPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-xl text-white">{formatCurrency(bill.total)}</p>
+                  <p className="font-bold text-xl text-white">{formatCurrency(bill.total, bill.currency)}</p>
                   {bill.issue_date && <p className="text-sm text-gray-400">Issued {bill.issue_date}</p>}
                 </div>
               </div>

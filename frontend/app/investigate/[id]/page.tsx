@@ -34,7 +34,7 @@ function SeverityChip({ priority }: { priority: string }) {
   );
 }
 
-function EvidenceModal({ evidence, onClose }: { evidence: EvidenceItem; onClose: () => void }) {
+function EvidenceModal({ evidence, currency, onClose }: { evidence: EvidenceItem; currency?: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 max-w-lg w-full space-y-4 relative shadow-2xl">
@@ -60,7 +60,7 @@ function EvidenceModal({ evidence, onClose }: { evidence: EvidenceItem; onClose:
           {evidence.amount != null && (
             <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3">
               <span className="text-orange-400 font-bold text-sm">
-                Amount flagged: {formatCurrency(evidence.amount)}
+                Amount flagged: {formatCurrency(evidence.amount, currency)}
               </span>
               {evidence.percentage_change != null && (
                 <span className="text-orange-400 text-sm ml-3">
@@ -76,13 +76,13 @@ function EvidenceModal({ evidence, onClose }: { evidence: EvidenceItem; onClose:
 }
 
 function ClarificationModal({ finding, bill, onClose }: { finding: Finding; bill: Bill; onClose: () => void }) {
-  const amountStr = finding.amount != null ? formatCurrency(finding.amount) : "";
+  const amountStr = finding.amount != null ? formatCurrency(finding.amount, bill.currency) : "";
   const ev = finding.evidence as Record<string, unknown> | null;
   const itemName = (ev?.description as string) ?? finding.title;
   const defaultMsg = finding.type === "NEW_CHARGE"
     ? `Hello,\n\nI noticed a ${amountStr} charge for "${itemName}" on my recent ${bill.bill_type} bill that was not present on my previous bill.\n\nCould you please clarify:\n1. When was this charge added?\n2. What does it cover?\n3. Is it mandatory?\n\nThank you.`
     : finding.type === "PRICE_INCREASE"
-    ? `Hello,\n\nI noticed the price for "${itemName}" increased to ${formatCurrency((ev?.current_price as number) ?? 0)} from ${formatCurrency((ev?.previous_price as number) ?? 0)} on my recent bill.\n\nCould you please explain this price change and whether a notice was sent?\n\nThank you.`
+    ? `Hello,\n\nI noticed the price for "${itemName}" increased to ${formatCurrency((ev?.current_price as number) ?? 0, bill.currency)} from ${formatCurrency((ev?.previous_price as number) ?? 0, bill.currency)} on my recent bill.\n\nCould you please explain this price change and whether a notice was sent?\n\nThank you.`
     : `Hello,\n\nI have a query about my recent ${bill.bill_type} bill regarding: ${finding.title}.\n\n${finding.description}\n\nCould you please clarify this?\n\nThank you.`;
 
   return (
@@ -192,7 +192,7 @@ export default function InvestigatePage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold">Bill Investigator</h1>
-          <p className="text-gray-400 text-sm">{bill.provider} · {bill.bill_type} · {formatCurrency(bill.total)}</p>
+          <p className="text-gray-400 text-sm">{bill.provider} · {bill.bill_type} · {formatCurrency(bill.total, bill.currency)}</p>
         </div>
       </div>
 
@@ -281,7 +281,7 @@ export default function InvestigatePage() {
                       </div>
                       {f.amount != null && (
                         <span className="font-mono font-bold text-xl text-white flex-shrink-0">
-                          {formatCurrency(f.amount)}
+                          {formatCurrency(f.amount, bill.currency)}
                         </span>
                       )}
                     </div>
@@ -332,17 +332,17 @@ export default function InvestigatePage() {
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Previous</p>
-                  <p className="font-mono font-bold text-white">{formatCurrency(result.comparison.previous_total)}</p>
+                  <p className="font-mono font-bold text-white">{formatCurrency(result.comparison.previous_total, bill.currency)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Current</p>
-                  <p className="font-mono font-bold text-white">{formatCurrency(result.comparison.current_total)}</p>
+                  <p className="font-mono font-bold text-white">{formatCurrency(result.comparison.current_total, bill.currency)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Change</p>
                   <p className={`font-mono font-bold ${result.comparison.absolute_difference > 0 ? "text-red-400" : "text-green-400"}`}>
                     {result.comparison.absolute_difference > 0 ? "+" : ""}
-                    {formatCurrency(result.comparison.absolute_difference)}
+                    {formatCurrency(result.comparison.absolute_difference, bill.currency)}
                     {" "}({result.comparison.percentage_difference.toFixed(1)}%)
                   </p>
                 </div>
@@ -354,7 +354,7 @@ export default function InvestigatePage() {
 
       {/* Modals */}
       {selectedEvidence && (
-        <EvidenceModal evidence={selectedEvidence} onClose={() => setSelectedEvidence(null)} />
+        <EvidenceModal evidence={selectedEvidence} currency={bill.currency} onClose={() => setSelectedEvidence(null)} />
       )}
       {clarificationFinding && bill && (
         <ClarificationModal

@@ -29,9 +29,10 @@ function FindingTypeIcon({ type }: { type: string }) {
   return <>{icons[type] ?? <Info className="w-4 h-4 text-gray-400" />}</>;
 }
 
-function EvidenceCard({ finding }: { finding: Finding }) {
+function EvidenceCard({ finding, currency }: { finding: Finding; currency?: string }) {
   const ev = finding.evidence as Record<string, unknown> | null;
   if (!ev) return null;
+  const cur = (ev.currency as string) || currency || "USD";
 
   return (
     <div className="mt-3 bg-black/40 rounded-xl p-4 border border-white/5 space-y-2 text-sm">
@@ -40,28 +41,28 @@ function EvidenceCard({ finding }: { finding: Finding }) {
       {finding.type === "TOTAL_MISMATCH" && (
         <div className="space-y-1.5 font-mono">
           {typeof ev.subtotal === "number" && (
-            <div className="flex justify-between"><span className="text-gray-400">Subtotal</span><span>{formatCurrency(ev.subtotal as number)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Subtotal</span><span>{formatCurrency(ev.subtotal as number, cur)}</span></div>
           )}
           {typeof ev.discount === "number" && ev.discount > 0 && (
-            <div className="flex justify-between text-green-400"><span>Discount</span><span>−{formatCurrency(ev.discount as number)}</span></div>
+            <div className="flex justify-between text-green-400"><span>Discount</span><span>−{formatCurrency(ev.discount as number, cur)}</span></div>
           )}
           {typeof ev.fees === "number" && ev.fees > 0 && (
-            <div className="flex justify-between"><span className="text-gray-400">Fees</span><span>{formatCurrency(ev.fees as number)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Fees</span><span>{formatCurrency(ev.fees as number, cur)}</span></div>
           )}
           {typeof ev.tax === "number" && ev.tax > 0 && (
-            <div className="flex justify-between"><span className="text-gray-400">Tax</span><span>{formatCurrency(ev.tax as number)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Tax</span><span>{formatCurrency(ev.tax as number, cur)}</span></div>
           )}
           <div className="flex justify-between pt-1 border-t border-white/10 text-emerald-400 font-bold">
             <span>Calculated total</span>
-            <span>{formatCurrency(ev.calculated_total as number)}</span>
+            <span>{formatCurrency(ev.calculated_total as number, cur)}</span>
           </div>
           <div className="flex justify-between text-red-400 font-bold">
             <span>Reported total</span>
-            <span>{formatCurrency(ev.reported_total as number)}</span>
+            <span>{formatCurrency(ev.reported_total as number, cur)}</span>
           </div>
           <div className="flex justify-between text-orange-400 font-bold">
             <span>Difference</span>
-            <span>₹{((ev.difference as number) || 0).toFixed(2)}</span>
+            <span>{formatCurrency(((ev.difference as number) || 0), cur)}</span>
           </div>
         </div>
       )}
@@ -71,16 +72,16 @@ function EvidenceCard({ finding }: { finding: Finding }) {
           {(ev.line_items as Array<{description: string; amount: number}>).map((li, i) => (
             <div key={i} className="flex justify-between text-gray-300">
               <span className="truncate pr-4">{li.description}</span>
-              <span>{formatCurrency(li.amount)}</span>
+              <span>{formatCurrency(li.amount, cur)}</span>
             </div>
           ))}
           <div className="flex justify-between pt-1 border-t border-white/10 text-emerald-400 font-bold">
             <span>Sum of line items</span>
-            <span>{formatCurrency(ev.calculated_sum as number)}</span>
+            <span>{formatCurrency(ev.calculated_sum as number, cur)}</span>
           </div>
           <div className="flex justify-between text-red-400 font-bold">
             <span>Reported subtotal</span>
-            <span>{formatCurrency(ev.reported_subtotal as number)}</span>
+            <span>{formatCurrency(ev.reported_subtotal as number, cur)}</span>
           </div>
         </div>
       )}
@@ -89,19 +90,19 @@ function EvidenceCard({ finding }: { finding: Finding }) {
         <div className="space-y-1.5 font-mono">
           <div className="flex justify-between">
             <span className="text-gray-400">Previous price</span>
-            <span>{formatCurrency(ev.previous_price as number)}</span>
+            <span>{formatCurrency(ev.previous_price as number, cur)}</span>
           </div>
           <div className="flex justify-between font-bold">
             <span className="text-gray-400">Current price</span>
             <span className={finding.type === "PRICE_INCREASE" ? "text-red-400" : "text-green-400"}>
-              {formatCurrency(ev.current_price as number)}
+              {formatCurrency(ev.current_price as number, cur)}
             </span>
           </div>
           <div className={`flex justify-between font-bold pt-1 border-t border-white/10 ${finding.type === "PRICE_INCREASE" ? "text-red-400" : "text-green-400"}`}>
             <span>Change</span>
             <span>
               {finding.type === "PRICE_INCREASE" ? "+" : "−"}
-              {formatCurrency(Math.abs(ev.difference as number))}
+              {formatCurrency(Math.abs(ev.difference as number), cur)}
               {" "}({Math.abs(ev.percentage_change as number).toFixed(1)}%)
             </span>
           </div>
@@ -112,13 +113,13 @@ function EvidenceCard({ finding }: { finding: Finding }) {
         <div className="space-y-1 text-gray-300">
           <p>First appeared on this bill.</p>
           <p>Checked <strong className="text-white">{ev.previous_bills_checked as number}</strong> previous bill(s) — not found in any.</p>
-          <p className="font-mono text-orange-400 font-bold">{formatCurrency(ev.amount as number)}</p>
+          <p className="font-mono text-orange-400 font-bold">{formatCurrency(ev.amount as number, cur)}</p>
         </div>
       )}
 
       {finding.type === "DUPLICATE_CHARGE" && (
         <div className="space-y-1 text-gray-300 font-mono">
-          <p>Appears <strong className="text-white">{ev.occurrences as number} times</strong> at {formatCurrency(ev.amount as number)} each.</p>
+          <p>Appears <strong className="text-white">{ev.occurrences as number} times</strong> at {formatCurrency(ev.amount as number, cur)} each.</p>
         </div>
       )}
     </div>
@@ -186,7 +187,7 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
           )}
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-3xl md:text-4xl font-extrabold text-white">{formatCurrency(bill.total)}</p>
+          <p className="text-3xl md:text-4xl font-extrabold text-white">{formatCurrency(bill.total, bill.currency)}</p>
           {pctChange !== null && pctChange !== 0 && (
             <p className={`${pctChange > 0 ? "text-red-400" : "text-green-400"} font-semibold flex items-center justify-end gap-1 mt-1 text-sm`}>
               <ArrowUpRight className={`w-4 h-4 ${pctChange < 0 ? "rotate-180" : ""}`} />
@@ -229,29 +230,31 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
           <div className="pt-3 border-t border-white/8 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-400">Subtotal</span>
-              <span className="font-mono">{formatCurrency(bill.subtotal)}</span>
+              <span className="font-mono">{formatCurrency(bill.subtotal, bill.currency)}</span>
             </div>
-            {bill.discount > 0 && (
+            {bill.discount != null && bill.discount > 0 && (
               <div className="flex justify-between text-green-400">
                 <span>Discount</span>
-                <span className="font-mono">−{formatCurrency(bill.discount)}</span>
+                <span className="font-mono">−{formatCurrency(bill.discount, bill.currency)}</span>
               </div>
             )}
-            {bill.tax > 0 && (
+            {bill.tax != null && bill.tax > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-400">GST ({bill.tax_rate}%)</span>
-                <span className="font-mono">{formatCurrency(bill.tax)}</span>
+                <span className="text-gray-400">
+                  {bill.tax_rate ? (bill.currency === "INR" ? `GST (${bill.tax_rate}%)` : `Tax (${bill.tax_rate}%)`) : "Tax"}
+                </span>
+                <span className="font-mono">{formatCurrency(bill.tax, bill.currency)}</span>
               </div>
             )}
-            {bill.fees > 0 && (
+            {bill.fees != null && bill.fees > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-400">Fees</span>
-                <span className="font-mono">{formatCurrency(bill.fees)}</span>
+                <span className="font-mono">{formatCurrency(bill.fees, bill.currency)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-base pt-2 border-t border-white/8">
               <span>Total</span>
-              <span className="font-mono">{formatCurrency(bill.total)}</span>
+              <span className="font-mono">{formatCurrency(bill.total, bill.currency)}</span>
             </div>
           </div>
           <Link
@@ -283,7 +286,7 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
                     <p className="font-semibold text-white">{f.title}</p>
                     <p className="text-gray-400 text-xs mt-0.5 line-clamp-2">{f.description}</p>
                     {f.amount != null && (
-                      <p className="font-mono text-white font-bold mt-1">{formatCurrency(f.amount)}</p>
+                      <p className="font-mono text-white font-bold mt-1">{formatCurrency(f.amount, bill.currency)}</p>
                     )}
                   </div>
                 </div>
@@ -328,11 +331,11 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
                   </div>
                   {f.amount != null && (
                     <p className="font-mono font-bold text-white whitespace-nowrap text-lg flex-shrink-0">
-                      {formatCurrency(f.amount)}
+                      {formatCurrency(f.amount, bill.currency)}
                     </p>
                   )}
                 </div>
-                <EvidenceCard finding={f} />
+                <EvidenceCard finding={f} currency={bill.currency} />
               </div>
             ))}
           </div>
@@ -361,10 +364,10 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
                     <tr key={i} className={mismatch ? "bg-red-500/5" : ""}>
                       <td className="py-3 text-gray-200">{item.description}</td>
                       <td className="py-3 text-right text-gray-400 font-mono">{item.quantity}</td>
-                      <td className="py-3 text-right text-gray-400 font-mono">{formatCurrency(item.unit_price)}</td>
+                      <td className="py-3 text-right text-gray-400 font-mono">{formatCurrency(item.unit_price, bill.currency)}</td>
                       <td className={`py-3 text-right font-mono font-semibold ${mismatch ? "text-red-400" : "text-white"}`}>
-                        {formatCurrency(item.amount)}
-                        {mismatch && <span className="ml-1 text-xs text-red-500">(expected {formatCurrency(lineTotal)})</span>}
+                        {formatCurrency(item.amount, bill.currency)}
+                        {mismatch && <span className="ml-1 text-xs text-red-500">(expected {formatCurrency(lineTotal, bill.currency)})</span>}
                       </td>
                     </tr>
                   );
@@ -374,7 +377,7 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
                 <tr className="border-t border-white/10">
                   <td colSpan={3} className="py-3 font-bold text-gray-300">Sum of line items</td>
                   <td className="py-3 text-right font-mono font-bold text-white">
-                    {formatCurrency(bill.line_items.reduce((s, i) => s + i.amount, 0))}
+                    {formatCurrency(bill.line_items.reduce((s, i) => s + i.amount, 0), bill.currency)}
                   </td>
                 </tr>
               </tfoot>
@@ -390,16 +393,16 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
           <div className="grid sm:grid-cols-3 gap-4 text-sm">
             <div className="bg-white/3 rounded-xl p-4">
               <p className="text-gray-500 text-xs mb-1">Previous Total</p>
-              <p className="font-mono font-bold text-white text-lg">{formatCurrency(comparison.previous_total)}</p>
+              <p className="font-mono font-bold text-white text-lg">{formatCurrency(comparison.previous_total, bill.currency)}</p>
             </div>
             <div className="bg-white/3 rounded-xl p-4">
               <p className="text-gray-500 text-xs mb-1">Current Total</p>
-              <p className="font-mono font-bold text-white text-lg">{formatCurrency(comparison.current_total)}</p>
+              <p className="font-mono font-bold text-white text-lg">{formatCurrency(comparison.current_total, bill.currency)}</p>
             </div>
             <div className={`rounded-xl p-4 ${comparison.absolute_difference > 0 ? "bg-red-500/10" : comparison.absolute_difference < 0 ? "bg-green-500/10" : "bg-white/3"}`}>
               <p className="text-gray-500 text-xs mb-1">Change</p>
               <p className={`font-mono font-bold text-lg ${comparison.absolute_difference > 0 ? "text-red-400" : comparison.absolute_difference < 0 ? "text-green-400" : "text-white"}`}>
-                {comparison.absolute_difference > 0 ? "+" : ""}{formatCurrency(comparison.absolute_difference)}
+                {comparison.absolute_difference > 0 ? "+" : ""}{formatCurrency(comparison.absolute_difference, bill.currency)}
               </p>
               <p className={`text-xs font-semibold ${comparison.absolute_difference > 0 ? "text-red-400" : "text-green-400"}`}>
                 {comparison.percentage_difference.toFixed(1)}%

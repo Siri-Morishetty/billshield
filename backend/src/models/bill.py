@@ -17,23 +17,26 @@ class SourceDocument(BaseModel):
 class Bill(BaseModel):
     bill_id: str
     user_id: str
-    bill_type: str                        # "internet", "electricity", "utility"
+    bill_type: str                        # "internet", "electricity", "utility", "invoice"
     provider: str
     billing_period: Optional[BillingPeriod] = None
     issue_date: Optional[date] = None
     due_date: Optional[date] = None
     invoice_number: Optional[str] = None
-    currency: str = "INR"
-    subtotal: float
-    discount: float = 0.0
-    taxable_amount: float = 0.0
-    tax_rate: float = 0.0
-    tax: float = 0.0
-    fees: float = 0.0
-    total: float
+    currency: str = "USD"
+    subtotal: Optional[float] = None
+    discount: Optional[float] = 0.0
+    taxable_amount: Optional[float] = None
+    tax_rate: Optional[float] = None
+    tax: Optional[float] = None
+    fees: Optional[float] = 0.0
+    total: Optional[float] = None
     line_items: List[LineItem] = []
-    source_document: Optional[SourceDocument] = None
+    source_document: Optional[Any] = None
     extraction_status: str = "completed"
+    reported: Dict[str, Optional[float]] = Field(default_factory=dict)
+    calculated: Dict[str, Optional[float]] = Field(default_factory=dict)
+    validation_status: Dict[str, str] = Field(default_factory=dict)
     # Demo bill metadata — not present on uploaded bills
     is_demo: bool = False
     demo_label: Optional[str] = None

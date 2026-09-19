@@ -13,6 +13,23 @@ def _normalize(s: str) -> str:
     return s.lower().strip()
 
 
+def _curr_sym(currency: Any) -> str:
+    c = str(currency or "USD").upper()
+    if c == "USD":
+        return "$"
+    elif c == "INR":
+        return "₹"
+    elif c == "EUR":
+        return "€"
+    elif c == "GBP":
+        return "£"
+    elif c == "AUD":
+        return "A$"
+    elif c == "CAD":
+        return "C$"
+    return f"{c} "
+
+
 class AnomalyEngine:
 
     @staticmethod
@@ -22,6 +39,7 @@ class AnomalyEngine:
 
         findings: List[Finding] = []
         previous_bill = historical_bills[-1]  # most recent past bill
+        sym = _curr_sym(current_bill.currency)
 
         # Build historical item lookup: normalized_description -> item
         hist_items: Dict[str, Any] = {}
@@ -43,7 +61,7 @@ class AnomalyEngine:
                     priority="MEDIUM",
                     title=f"New charge: {item.description}",
                     description=(
-                        f"'{item.description}' (₹{item.amount:,.2f}) "
+                        f"'{item.description}' ({sym}{item.amount:,.2f}) "
                         f"appears for the first time. "
                         f"Not present on any previous {current_bill.provider} bill."
                     ),
@@ -80,8 +98,8 @@ class AnomalyEngine:
                     title=f"Price {'increase' if price_diff > 0 else 'decrease'}: {item.description}",
                     description=(
                         f"'{item.description}' price changed from "
-                        f"₹{hist_item.unit_price:,.2f} to ₹{item.unit_price:,.2f} "
-                        f"({'↑' if price_diff > 0 else '↓'}₹{abs(price_diff):,.2f}, "
+                        f"{sym}{hist_item.unit_price:,.2f} to {sym}{item.unit_price:,.2f} "
+                        f"({'↑' if price_diff > 0 else '↓'}{sym}{abs(price_diff):,.2f}, "
                         f"{abs(pct):.1f}% {'increase' if price_diff > 0 else 'decrease'})."
                     ),
                     amount=abs(price_diff),
@@ -124,14 +142,16 @@ class AnomalyEngine:
         # ── C: Significant overall total increase ──
         pct_diff = history_comparison.get("percentage_difference", 0)
         abs_diff = history_comparison.get("absolute_difference", 0)
+        current_total = current_bill.total if current_bill.total is not None else 0.0
+        prev_total = history_comparison.get("previous_total", 0)
+
         if pct_diff > 20 and abs_diff > 0:
-            # Only flag if NOT already explained by new charges / price increases
             already_flagged_amount = sum(
                 f.amount or 0 for f in findings
                 if f.type in ("NEW_CHARGE", "PRICE_INCREASE")
             )
             unexplained = abs_diff - already_flagged_amount
-            if unexplained > 50:  # more than ₹50 unexplained
+            if unexplained > 50:
                 priority = "HIGH" if pct_diff > 40 else "MEDIUM"
                 findings.append(Finding(
                     finding_id=str(uuid.uuid4()),
@@ -140,17 +160,17 @@ class AnomalyEngine:
                     priority=priority,
                     title=f"Significant bill increase ({abs(pct_diff):.1f}%)",
                     description=(
-                        f"Bill total increased by ₹{abs_diff:,.2f} "
+                        f"Bill total increased by {sym}{abs_diff:,.2f} "
                         f"({abs(pct_diff):.1f}%) compared to previous bill "
-                        f"(₹{history_comparison.get('previous_total', 0):,.2f} → "
-                        f"₹{current_bill.total:,.2f}). "
-                        f"₹{unexplained:,.2f} of this increase is not yet explained by "
+                        f"({sym}{prev_total:,.2f} → "
+                        f"{sym}{current_total:,.2f}). "
+                        f"{sym}{unexplained:,.2f} of this increase is not yet explained by "
                         f"detected new charges or price changes."
                     ),
                     amount=abs_diff,
                     evidence={
-                        "previous_total": history_comparison.get("previous_total", 0),
-                        "current_total": current_bill.total,
+                        "previous_total": prev_total,
+                        "current_total": current_total,
                         "absolute_difference": abs_diff,
                         "percentage_difference": round(pct_diff, 2),
                         "unexplained_amount": round(unexplained, 2),

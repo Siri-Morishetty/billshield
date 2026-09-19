@@ -435,6 +435,7 @@ async def upload_bill(file: UploadFile = File(...)):
         "extraction_mode": extraction_mode,   # "local" | "textract" | "local_fallback"
         "findings_count": len(all_findings),
         "provider": parsed_bill.provider,
+        "currency": parsed_bill.currency,
         "subtotal": parsed_bill.subtotal,
         "tax": parsed_bill.tax,
         "total": parsed_bill.total,

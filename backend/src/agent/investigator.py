@@ -14,6 +14,23 @@ from ..services.history_engine import HistoryEngine
 from ..services.bedrock_service import BedrockService
 
 
+def _curr_sym(currency: Any) -> str:
+    c = str(currency or "USD").upper()
+    if c == "USD":
+        return "$"
+    elif c == "INR":
+        return "₹"
+    elif c == "EUR":
+        return "€"
+    elif c == "GBP":
+        return "£"
+    elif c == "AUD":
+        return "A$"
+    elif c == "CAD":
+        return "C$"
+    return f"{c} "
+
+
 class BillInvestigatorAgent:
 
     def investigate(self, current_bill: Bill, historical_bills: List[Bill], findings: List[Finding]) -> Dict[str, Any]:
@@ -76,6 +93,7 @@ class BillInvestigatorAgent:
         comparison: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         evidence_list = []
+        sym = _curr_sym(current_bill.currency)
 
         for f in findings:
             ev: Dict[str, Any] = {
@@ -96,12 +114,12 @@ class BillInvestigatorAgent:
             elif f.type in ("PRICE_INCREASE", "PRICE_DECREASE"):
                 fd = f.evidence or {}
                 ev["current_bill_text"] = (
-                    f"Current unit price: ₹{fd.get('current_price', 'N/A'):,.2f}"
+                    f"Current unit price: {sym}{fd.get('current_price', 'N/A'):,.2f}"
                     if isinstance(fd.get('current_price'), (int, float))
                     else f.description
                 )
                 ev["historical_check"] = (
-                    f"Previous unit price: ₹{fd.get('previous_price', 'N/A'):,.2f} "
+                    f"Previous unit price: {sym}{fd.get('previous_price', 'N/A'):,.2f} "
                     f"(from bill {fd.get('previous_bill_id', 'prior bill')})"
                     if isinstance(fd.get('previous_price'), (int, float))
                     else "See historical bills for comparison."
@@ -113,19 +131,21 @@ class BillInvestigatorAgent:
                 fd = f.evidence or {}
                 parts = []
                 if isinstance(fd.get("subtotal"), (int, float)):
-                    parts.append(f"Subtotal: ₹{fd['subtotal']:,.2f}")
+                    parts.append(f"Subtotal: {sym}{fd['subtotal']:,.2f}")
                 if isinstance(fd.get("discount"), (int, float)) and fd["discount"] > 0:
-                    parts.append(f"Discount: −₹{fd['discount']:,.2f}")
+                    parts.append(f"Discount: −{sym}{fd['discount']:,.2f}")
                 if isinstance(fd.get("fees"), (int, float)) and fd["fees"] > 0:
-                    parts.append(f"Fees: ₹{fd['fees']:,.2f}")
+                    parts.append(f"Fees: {sym}{fd['fees']:,.2f}")
                 if isinstance(fd.get("tax"), (int, float)) and fd["tax"] > 0:
-                    parts.append(f"Tax: ₹{fd['tax']:,.2f}")
+                    parts.append(f"Tax: {sym}{fd['tax']:,.2f}")
                 if isinstance(fd.get("calculated_total"), (int, float)):
-                    parts.append(f"Calculated total: ₹{fd['calculated_total']:,.2f}")
+                    parts.append(f"Calculated total: {sym}{fd['calculated_total']:,.2f}")
                 ev["current_bill_text"] = " | ".join(parts) or f.description
+                rep_tot = fd.get('reported_total', current_bill.total)
+                rep_str = f"{sym}{rep_tot:,.2f}" if rep_tot is not None else "N/A"
                 ev["historical_check"] = (
-                    f"Bill reports total: ₹{fd.get('reported_total', current_bill.total):,.2f}. "
-                    f"Difference: ₹{fd.get('difference', f.amount or 0):,.2f}."
+                    f"Bill reports total: {rep_str}. "
+                    f"Difference: {sym}{fd.get('difference', f.amount or 0):,.2f}."
                 )
                 ev["amount"] = f.amount
 
@@ -133,7 +153,7 @@ class BillInvestigatorAgent:
                 fd = f.evidence or {}
                 ev["current_bill_text"] = (
                     f"'{fd.get('description', '')}' appears {fd.get('occurrences', 2)} times "
-                    f"at ₹{fd.get('amount', 0):,.2f} each."
+                    f"at {sym}{fd.get('amount', 0):,.2f} each."
                     if fd else f.description
                 )
                 ev["historical_check"] = "N/A — check within this bill only."
@@ -141,12 +161,14 @@ class BillInvestigatorAgent:
 
             elif f.type == "UNUSUAL_INCREASE":
                 fd = f.evidence or {}
+                cur_tot = fd.get('current_total', current_bill.total)
+                cur_str = f"{sym}{cur_tot:,.2f}" if cur_tot is not None else "N/A"
                 ev["current_bill_text"] = (
-                    f"Current total: ₹{fd.get('current_total', current_bill.total):,.2f}"
+                    f"Current total: {cur_str}"
                 )
                 ev["historical_check"] = (
-                    f"Previous total: ₹{fd.get('previous_total', comparison.get('previous_total', 0)):,.2f}. "
-                    f"Increase: ₹{fd.get('absolute_difference', f.amount or 0):,.2f} "
+                    f"Previous total: {sym}{fd.get('previous_total', comparison.get('previous_total', 0)):,.2f}. "
+                    f"Increase: {sym}{fd.get('absolute_difference', f.amount or 0):,.2f} "
                     f"({fd.get('percentage_difference', 0):.1f}%)."
                 )
                 ev["amount"] = f.amount
@@ -170,10 +192,12 @@ class BillInvestigatorAgent:
         findings: List[Finding],
         comparison: Dict[str, Any],
     ) -> str:
+        sym = _curr_sym(bill.currency)
         lines = ["### Investigation Summary\n"]
         lines.append(f"**Provider:** {bill.provider}")
         lines.append(f"**Bill type:** {bill.bill_type.capitalize()}")
-        lines.append(f"**Current total:** ₹{bill.total:,.2f}")
+        tot_str = f"{sym}{bill.total:,.2f}" if bill.total is not None else "N/A"
+        lines.append(f"**Current total:** {tot_str}")
 
         prev = comparison.get("previous_total", 0)
         if prev > 0:
@@ -181,8 +205,8 @@ class BillInvestigatorAgent:
             pct = comparison.get("percentage_difference", 0)
             direction = "higher" if diff > 0 else "lower" if diff < 0 else "same"
             lines.append(
-                f"**Previous total:** ₹{prev:,.2f} — "
-                f"this bill is **₹{abs(diff):,.2f} {direction}** "
+                f"**Previous total:** {sym}{prev:,.2f} — "
+                f"this bill is **{sym}{abs(diff):,.2f} {direction}** "
                 f"({abs(pct):.1f}% {'increase' if diff > 0 else 'decrease' if diff < 0 else 'change'})."
             )
         lines.append("")
@@ -215,13 +239,16 @@ class BillInvestigatorAgent:
         if bill.line_items:
             lines.append("\n**Charge breakdown:**")
             for item in bill.line_items:
-                lines.append(f"- {item.description}: ₹{item.amount:,.2f}")
-            lines.append(f"- **Subtotal: ₹{bill.subtotal:,.2f}**")
-            if bill.discount > 0:
-                lines.append(f"- Discount: −₹{bill.discount:,.2f}")
-            if bill.tax > 0:
-                lines.append(f"- GST ({bill.tax_rate:.0f}%): ₹{bill.tax:,.2f}")
-            lines.append(f"- **Total: ₹{bill.total:,.2f}**")
+                lines.append(f"- {item.description}: {sym}{item.amount:,.2f}")
+            if bill.subtotal is not None:
+                lines.append(f"- **Subtotal: {sym}{bill.subtotal:,.2f}**")
+            if bill.discount and bill.discount > 0:
+                lines.append(f"- Discount: −{sym}{bill.discount:,.2f}")
+            if bill.tax and bill.tax > 0:
+                tax_lbl = f"Tax ({bill.tax_rate:.0f}%)" if bill.tax_rate else "Tax"
+                lines.append(f"- {tax_lbl}: {sym}{bill.tax:,.2f}")
+            if bill.total is not None:
+                lines.append(f"- **Total: {sym}{bill.total:,.2f}**")
 
         lines.append("\n---\n*Explanation generated deterministically from verified findings. No AI inference was used for numerical results.*")
         return "\n".join(lines)
@@ -232,12 +259,13 @@ class BillInvestigatorAgent:
 
     def _generate_questions(self, findings: List[Finding], bill: Bill) -> List[str]:
         questions = []
+        sym = _curr_sym(bill.currency)
         for f in findings:
             if f.type == "NEW_CHARGE":
                 fd = f.evidence or {}
                 name = fd.get("description", f.title)
                 amount = f.amount or 0
-                questions.append(f"When was '{name}' added to my account, and what does the ₹{amount:,.2f} charge cover?")
+                questions.append(f"When was '{name}' added to my account, and what does the {sym}{amount:,.2f} charge cover?")
                 questions.append(f"Was I notified before '{name}' was added to my bill?")
                 questions.append(f"Is '{name}' a mandatory charge or can it be removed?")
 
@@ -246,14 +274,16 @@ class BillInvestigatorAgent:
                 name = fd.get("description", f.title)
                 prev = fd.get("previous_price", 0)
                 curr = fd.get("current_price", 0)
-                questions.append(f"Why did the price of '{name}' increase from ₹{prev:,.2f} to ₹{curr:,.2f}?")
+                questions.append(f"Why did the price of '{name}' increase from {sym}{prev:,.2f} to {sym}{curr:,.2f}?")
                 questions.append(f"Was a notice sent before this price change?")
 
             elif f.type in ("TOTAL_MISMATCH", "CALCULATION_DISCREPANCY"):
                 fd = f.evidence or {}
+                calc_val = fd.get('calculated_total', fd.get('calculated_sum', 0))
+                rep_val = fd.get('reported_total', bill.total)
                 questions.append(
-                    f"The calculated amount is ₹{fd.get('calculated_total', fd.get('calculated_sum', 0)):,.2f} "
-                    f"but the bill shows ₹{fd.get('reported_total', bill.total):,.2f}. Can you explain this discrepancy?"
+                    f"The calculated amount is {sym}{calc_val:,.2f} "
+                    f"but the bill shows {sym}{rep_val:,.2f}. Can you explain this discrepancy?"
                 )
 
             elif f.type == "DUPLICATE_CHARGE":
